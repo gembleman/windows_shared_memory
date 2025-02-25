@@ -30,7 +30,7 @@ pub fn write_to_shared_memory(
         data_buffer.fill(0);
         let copy_len = std::cmp::min(data.len(), BUFFER_SIZE);
         data_buffer[..copy_len].copy_from_slice(&data[..copy_len]);
-        *data_len = copy_len;
+        *data_len = copy_len as u32;
 
         // 플래그 설정 (1: 데이터 전송)
         flag.store(1, Ordering::Release);
@@ -63,14 +63,14 @@ pub fn read_from_shared_memory(
             (
                 &(*shared_data).flag_client,
                 &(*shared_data).data_client_to_server,
-                (*shared_data).data_len_client_to_server,
+                (*shared_data).data_len_client_to_server as usize,
             )
         } else {
             // 클라이언트가 읽는 경우 서버에서 받은 데이터
             (
                 &(*shared_data).flag_server,
                 &(*shared_data).data_server_to_client,
-                (*shared_data).data_len_server_to_client,
+                (*shared_data).data_len_server_to_client as usize,
             )
         };
 
