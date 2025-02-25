@@ -1,0 +1,17 @@
+[package]
+name = "windows_shared_memory"
+version = "0.1.1"
+edition = "2021"
+authors = ["gembleman"]
+description = "A Rust library for working with shared memory on Windows systems"
+repository = "https://github.com/yourusername/windows_shared_memory"
+license = "MIT"
+keywords = ["windows", "shared-memory", "ipc"]
+categories = ["os::windows-apis", "memory-management"]
+
+[dependencies]
+windows = { version = "0.60", features = [
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_Security",
+] }
