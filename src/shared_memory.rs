@@ -59,12 +59,14 @@ pub fn read_from_shared_memory(
 
     unsafe {
         let (flag, data_buffer, data_len) = if is_server_reading {
+            // 서버가 읽는 경우 클라이언트에서 받은 데이터
             (
                 &(*shared_data).flag_client,
                 &(*shared_data).data_client_to_server,
                 (*shared_data).data_len_client_to_server,
             )
         } else {
+            // 클라이언트가 읽는 경우 서버에서 받은 데이터
             (
                 &(*shared_data).flag_server,
                 &(*shared_data).data_server_to_client,
@@ -72,6 +74,7 @@ pub fn read_from_shared_memory(
             )
         };
 
+        // 상태 - 0: 대기, 1: 데이터 전송, 2: 데이터 수신 완료, 3: 종료
         match flag.load(Ordering::Acquire) {
             1 => {
                 // 실제 데이터 길이만큼만 읽기
@@ -86,10 +89,9 @@ pub fn read_from_shared_memory(
                 ReceiveMessage::Message(message)
             }
             3 => ReceiveMessage::Exit,
-            _ => ReceiveMessage::MessageError(format!(
-                "잘못된 플래그: {}",
-                flag.load(Ordering::Relaxed)
-            )),
+            2 => ReceiveMessage::Timeout,
+            0 => ReceiveMessage::Timeout,
+            _ => ReceiveMessage::MessageError("알 수 없는 상태".to_string()),
         }
     }
 }
