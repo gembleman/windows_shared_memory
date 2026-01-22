@@ -9,6 +9,9 @@ use windows::Win32::{
     System::Memory::*,
 };
 
+/// Client instance for shared memory communication.
+///
+/// The client connects to an existing shared memory created by the server.
 pub struct Client {
     shared_data_address: *mut SharedData,
     h_map_file: HANDLE,
@@ -17,14 +20,28 @@ pub struct Client {
 }
 
 impl Client {
+    /// Creates a new client instance and connects to shared memory.
+    ///
+    /// # Arguments
+    ///
+    /// * `mapping_path` - Optional custom path for the shared memory mapping.
+    ///   If None, uses "Local\\MySharedMemory" as default.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use windows_shared_memory::Client;
+    ///
+    /// let client = Client::new(None).unwrap();
+    /// ```
     pub fn new(mapping_path: Option<&str>) -> Result<Self> {
-        // 공유 메모리 이름 설정
+        // Set shared memory name
         let mapping_name = mapping_path.unwrap_or("Local\\MySharedMemory");
         let mapping_name_pcwstr = str_to_pcwstr(mapping_name);
 
-        // 파일 매핑 객체 열기
+        // Open file mapping object
         let h_map_file =
-            unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, mapping_name_pcwstr)? };
+            unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, &mapping_name_pcwstr)? };
 
         // 공유 메모리 매핑
         let p_buf = unsafe {
@@ -39,7 +56,7 @@ impl Client {
 
         if p_buf.Value.is_null() {
             unsafe { CloseHandle(h_map_file)? };
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
 
         // 이벤트 객체 열기
@@ -54,17 +71,41 @@ impl Client {
         })
     }
 
+    /// Sends data to the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Byte slice to send. Maximum size is 16KB (BUFFER_SIZE).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use windows_shared_memory::Client;
+    /// # let client = Client::new(None).unwrap();
+    /// client.send(b"Hello, server!").unwrap();
+    /// ```
     pub fn send(&self, data: &[u8]) -> Result<()> {
-        write_to_shared_memory(self.shared_data_address, data, false, self.h_event_c2s)
+        unsafe { write_to_shared_memory(self.shared_data_address, data, false, self.h_event_c2s) }
     }
 
+    /// Receives data from the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout_ms` - Optional timeout in milliseconds. If None, waits indefinitely.
+    ///
+    /// # Returns
+    ///
+    /// Returns a ReceiveMessage enum containing the message or status.
     pub fn receive(&self, timeout_ms: Option<u32>) -> ReceiveMessage {
-        read_from_shared_memory(
-            self.shared_data_address,
-            false,
-            timeout_ms,
-            self.h_event_s2c,
-        )
+        unsafe {
+            read_from_shared_memory(
+                self.shared_data_address,
+                false,
+                timeout_ms,
+                self.h_event_s2c,
+            )
+        }
     }
 }
 
@@ -74,19 +115,19 @@ impl Drop for Client {
             if let Err(e) = UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
                 Value: self.shared_data_address as *mut _,
             }) {
-                eprintln!("공유 메모리 매핑 해제 실패: {:?}", e);
+                eprintln!("Failed to unmap shared memory: {:?}", e);
             }
 
             if let Err(e) = CloseHandle(self.h_event_s2c) {
-                eprintln!("이벤트 핸들 닫기 실패(s2c): {:?}", e);
+                eprintln!("Failed to close event handle (s2c): {:?}", e);
             }
 
             if let Err(e) = CloseHandle(self.h_event_c2s) {
-                eprintln!("이벤트 핸들 닫기 실패(c2s): {:?}", e);
+                eprintln!("Failed to close event handle (c2s): {:?}", e);
             }
 
             if let Err(e) = CloseHandle(self.h_map_file) {
-                eprintln!("파일 매핑 핸들 닫기 실패: {:?}", e);
+                eprintln!("Failed to close file mapping handle: {:?}", e);
             }
         }
     }

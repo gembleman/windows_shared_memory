@@ -1,11 +1,18 @@
-﻿use crate::{ReceiveMessage, SharedData, BUFFER_SIZE};
+use crate::{ReceiveMessage, SharedData, BUFFER_SIZE};
 use std::sync::atomic::Ordering;
 use windows::core::Result;
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::System::Threading::{SetEvent, WaitForSingleObject};
 
-/// 공유 메모리에 데이터 쓰기
-pub fn write_to_shared_memory(
+/// Writes data to shared memory
+///
+/// # Safety
+///
+/// The caller must ensure:
+/// - `shared_data` is a valid, properly aligned pointer to initialized SharedData
+/// - No other threads are concurrently writing to the same buffer
+/// - `event_handle` is a valid Windows event handle
+pub unsafe fn write_to_shared_memory(
     shared_data: *mut SharedData,
     data: &[u8],
     is_server: bool,
@@ -26,47 +33,55 @@ pub fn write_to_shared_memory(
             )
         };
 
-        // 데이터 버퍼 초기화 및 복사
+        // Initialize and copy data buffer
         data_buffer.fill(0);
         let copy_len = std::cmp::min(data.len(), BUFFER_SIZE);
         data_buffer[..copy_len].copy_from_slice(&data[..copy_len]);
         *data_len = copy_len as u32;
 
-        // 플래그 설정 (1: 데이터 전송)
+        // Set flag (1: data sent)
         flag.store(1, Ordering::Release);
 
-        // 이벤트 신호 설정
+        // Set event signal
         SetEvent(event_handle)?;
+
+        Ok(())
     }
-    Ok(())
 }
 
-/// 공유 메모리에서 데이터 읽기
-pub fn read_from_shared_memory(
+/// Reads data from shared memory
+///
+/// # Safety
+///
+/// The caller must ensure:
+/// - `shared_data` is a valid, properly aligned pointer to initialized SharedData
+/// - No other threads are concurrently reading from the same buffer
+/// - `event_handle` is a valid Windows event handle
+pub unsafe fn read_from_shared_memory(
     shared_data: *mut SharedData,
     is_server_reading: bool,
     timeout_ms: Option<u32>,
     event_handle: HANDLE,
 ) -> ReceiveMessage {
-    // 이벤트 대기
-    if let Some(timeout) = timeout_ms {
-        match unsafe { WaitForSingleObject(event_handle, timeout) } {
-            WAIT_OBJECT_0 => {}
-            WAIT_TIMEOUT => return ReceiveMessage::Timeout,
-            _ => return ReceiveMessage::MessageError("이벤트 대기 실패".to_string()),
-        }
-    }
-
     unsafe {
+        // Wait for event
+        if let Some(timeout) = timeout_ms {
+            match WaitForSingleObject(event_handle, timeout) {
+                WAIT_OBJECT_0 => {}
+                WAIT_TIMEOUT => return ReceiveMessage::Timeout,
+                _ => return ReceiveMessage::MessageError("Event wait failed".to_string()),
+            }
+        }
+
         let (flag, data_buffer, data_len) = if is_server_reading {
-            // 서버가 읽는 경우 클라이언트에서 받은 데이터
+            // Server reading: data from client
             (
                 &(*shared_data).flag_client,
                 &(*shared_data).data_client_to_server,
                 (*shared_data).data_len_client_to_server as usize,
             )
         } else {
-            // 클라이언트가 읽는 경우 서버에서 받은 데이터
+            // Client reading: data from server
             (
                 &(*shared_data).flag_server,
                 &(*shared_data).data_server_to_client,
@@ -74,24 +89,24 @@ pub fn read_from_shared_memory(
             )
         };
 
-        // 상태 - 0: 대기, 1: 데이터 전송, 2: 데이터 수신 완료, 3: 종료
+        // State - 0: waiting, 1: data sent, 2: data received, 3: exit
         match flag.load(Ordering::Acquire) {
             1 => {
-                // 실제 데이터 길이만큼만 읽기
+                // Read only the valid data length
                 let valid_data = &data_buffer[..data_len];
                 let message = match String::from_utf8(valid_data.to_vec()) {
                     Ok(s) => s,
-                    Err(_) => return ReceiveMessage::MessageError("UTF-8 변환 실패".to_string()),
+                    Err(_) => return ReceiveMessage::MessageError("UTF-8 conversion failed".to_string()),
                 };
 
-                // 데이터 수신 완료 표시 (2)
+                // Mark data as received (2)
                 flag.store(2, Ordering::Release);
                 ReceiveMessage::Message(message)
             }
             3 => ReceiveMessage::Exit,
             2 => ReceiveMessage::Timeout,
             0 => ReceiveMessage::Timeout,
-            _ => ReceiveMessage::MessageError("알 수 없는 상태".to_string()),
+            _ => ReceiveMessage::MessageError("Unknown state".to_string()),
         }
     }
 }

@@ -1,15 +1,26 @@
 use std::sync::atomic::AtomicU32;
 
+/// Maximum buffer size for data transfer (16 KB)
 pub const BUFFER_SIZE: usize = 16 * 1024;
 
+/// Shared memory data structure used for IPC.
+///
+/// This structure is designed to work across 32-bit and 64-bit processes
+/// with proper alignment and explicit field ordering.
 #[repr(C, align(8))]
 pub struct SharedData {
-    pub flag_server: AtomicU32, // 서버 상태 - 0: 대기, 1: 데이터 전송, 2: 데이터 수신 완료, 3: 종료
-    pub flag_client: AtomicU32, // 클라이언트 상태 - 0: 대기, 1: 데이터 전송, 2: 데이터 수신 완료, 3: 종료
-    pub data_len_server_to_client: u32, // 서버->클라이언트 데이터 길이
-    pub data_len_client_to_server: u32, // 클라이언트->서버 데이터 길이
-    pub data_server_to_client: [u8; BUFFER_SIZE], // 서버->클라이언트 데이터
-    pub data_client_to_server: [u8; BUFFER_SIZE], // 클라이언트->서버 데이터
+    /// Server state flag - 0: waiting, 1: data sent, 2: data received, 3: exit
+    pub flag_server: AtomicU32,
+    /// Client state flag - 0: waiting, 1: data sent, 2: data received, 3: exit
+    pub flag_client: AtomicU32,
+    /// Length of data from server to client
+    pub data_len_server_to_client: u32,
+    /// Length of data from client to server
+    pub data_len_client_to_server: u32,
+    /// Data buffer from server to client
+    pub data_server_to_client: [u8; BUFFER_SIZE],
+    /// Data buffer from client to server
+    pub data_client_to_server: [u8; BUFFER_SIZE],
 }
 
 impl Default for SharedData {
@@ -31,10 +42,15 @@ impl SharedData {
     }
 }
 
+/// Result of receiving a message from shared memory.
 #[derive(Debug)]
 pub enum ReceiveMessage {
+    /// The sender requested to exit/close the connection
     Exit,
+    /// Successfully received a message
     Message(String),
+    /// An error occurred while receiving the message
     MessageError(String),
+    /// The receive operation timed out
     Timeout,
 }
