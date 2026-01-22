@@ -8,7 +8,7 @@ Windows IPC library using shared memory. Supports 32-bit/64-bit cross-process co
 
 ```toml
 [dependencies]
-windows_shared_memory = "0.1.4"
+windows_shared_memory = "0.1.5"
 ```
 
 ## Usage
