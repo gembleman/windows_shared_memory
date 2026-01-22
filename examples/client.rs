@@ -1,5 +1,10 @@
 //! Client example for cross-architecture shared memory test
 //! Build with: cargo build --example client [--target TARGET]
+//!
+//! Usage: client [SHM_NAME]
+//! Example: client Local\\MySharedMemory
+//!
+//! Note: Buffer size is automatically read from server
 
 use std::env;
 use windows_shared_memory::{Client, ReceiveMessage};
@@ -22,7 +27,11 @@ fn main() {
 
     let client = match Client::new(shm_name_ref) {
         Ok(c) => {
-            println!("[Client {}] Connected to shared memory successfully", arch);
+            println!(
+                "[Client {}] Connected to shared memory successfully (buffer: {} KB)",
+                arch,
+                c.buffer_size() / 1024
+            );
             c
         }
         Err(e) => {

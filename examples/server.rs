@@ -1,8 +1,11 @@
 //! Server example for cross-architecture shared memory test
 //! Build with: cargo build --example server [--target TARGET]
+//!
+//! Usage: server [SHM_NAME] [BUFFER_SIZE_KB]
+//! Example: server Local\\MySharedMemory 64
 
 use std::env;
-use windows_shared_memory::{ReceiveMessage, Server};
+use windows_shared_memory::{ReceiveMessage, Server, DEFAULT_BUFFER_SIZE};
 
 fn main() {
     let arch = if cfg!(target_pointer_width = "64") {
@@ -17,9 +20,20 @@ fn main() {
     let shm_name = env::args().nth(1);
     let shm_name_ref = shm_name.as_deref();
 
-    let server = match Server::new(shm_name_ref) {
+    // Get buffer size from args or use default (in KB)
+    let buffer_size = env::args()
+        .nth(2)
+        .and_then(|s| s.parse::<usize>().ok())
+        .map(|kb| kb * 1024)
+        .unwrap_or(DEFAULT_BUFFER_SIZE);
+
+    let server = match Server::with_buffer_size(shm_name_ref, buffer_size) {
         Ok(s) => {
-            println!("[Server {}] Created shared memory successfully", arch);
+            println!(
+                "[Server {}] Created shared memory successfully (buffer: {} KB)",
+                arch,
+                s.buffer_size() / 1024
+            );
             s
         }
         Err(e) => {

@@ -10,17 +10,21 @@
 //! - Support for 32-bit and 64-bit processes communication
 //! - Synchronization using Windows events
 //! - Thread-safe operations using atomic operations
+//! - **Dynamic buffer size** - configure buffer size at runtime
 //!
 //! ## Example
 //!
 //! ```no_run
 //! use windows_shared_memory::{Server, Client, ReceiveMessage};
 //!
-//! // Server side
+//! // Server side with default buffer size (16KB)
 //! let server = Server::new(None).unwrap();
 //! server.send(b"Hello from server").unwrap();
 //!
-//! // Client side
+//! // Or create server with custom buffer size (64KB)
+//! let server_large = Server::with_buffer_size(None, 64 * 1024).unwrap();
+//!
+//! // Client side (automatically reads buffer size from server)
 //! let client = Client::new(None).unwrap();
 //! client.send(b"Hello from client").unwrap();
 //!
